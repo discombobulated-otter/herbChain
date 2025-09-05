@@ -1,8 +1,8 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react"; // Import useRef
 import { QRCodeCanvas } from "qrcode.react";
-import { X } from 'lucide-react';
+import { X, Download } from 'lucide-react'; // Import Download icon
 
-// Mock data representing the entire supply chain, similar to your original appData
+// Mock data (no changes needed here)
 const supplyChainData = {
   collectionEvents: [
     { id: 'CE001', blockchainTxHash: '0x4a7b2c9e...', species: 'Withania somnifera (Ashwagandha)', geoLocation: { lat: 28.61, lng: 77.20, zone: 'Delhi-NCR Approved Zone' }, collectorName: 'Ramesh Kumar Collective', harvestDate: '2025-09-01T06:30:00Z', batchId: 'ASH-2024-B001' },
@@ -24,11 +24,9 @@ const supplyChainData = {
   ]
 };
 
-// --- Helper function to generate and download a FHIR Bundle ---
 function downloadFhirReport(batchId, data) {
     const collection = data.collectionEvents.find(e => e.batchId === batchId);
     if (!collection) return;
-
     const bundle = {
         resourceType: "Bundle", id: `bundle-${batchId}`, type: "collection",
         entry: [{
@@ -36,8 +34,6 @@ function downloadFhirReport(batchId, data) {
             resource: { resourceType: "Medication", id: `medication-${batchId}`, code: { text: collection.species }, batch: { lotNumber: batchId } }
         }]
     };
-    // In a real app, you would add all processing and testing events here as Provenance or Observation resources.
-    
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(bundle, null, 2));
     const a = document.createElement('a');
     a.href = dataStr;
@@ -45,27 +41,42 @@ function downloadFhirReport(batchId, data) {
     a.click();
 }
 
-
 export default function Trace() {
   const [selectedBatchId, setSelectedBatchId] = useState(null);
   const [isQrModalOpen, setQrModalOpen] = useState(false);
+  const qrCodeRef = useRef(null); // Ref for the QRCodeCanvas
 
-  // Memoize the derived data for the selected batch to avoid recalculation
   const traceData = useMemo(() => {
     if (!selectedBatchId) return null;
     return {
       collection: supplyChainData.collectionEvents.find(e => e.batchId === selectedBatchId),
       processing: supplyChainData.processingSteps.filter(p => p.batchId === selectedBatchId),
-      testing: supplyChainData.qualityTests.filter(t => p.batchId === selectedBatchId),
+      testing: supplyChainData.qualityTests.filter(t => t.batchId === selectedBatchId),
     };
   }, [selectedBatchId]);
+
+  // Function to handle QR code download
+  const handleDownloadQr = () => {
+    if (qrCodeRef.current) {
+      const canvas = qrCodeRef.current.querySelector('canvas'); // QRCodeCanvas renders a canvas element
+      if (canvas) {
+        const pngUrl = canvas.toDataURL("image/png");
+        const downloadLink = document.createElement("a");
+        downloadLink.href = pngUrl;
+        downloadLink.download = `QR_Code_${selectedBatchId}.png`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+      }
+    }
+  };
+
 
   return (
     <div className="p-8">
       <h2 className="text-3xl font-bold mb-2">Trace a Batch</h2>
       <p className="text-gray-600 mb-8">Select a batch from the cards below to view its complete journey from harvest to verification.</p>
 
-      {/* Batch Selection Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         {supplyChainData.compliance.map(batch => (
           <div 
@@ -81,7 +92,6 @@ export default function Trace() {
 
       <hr className="my-8" />
 
-      {/* Trace Timeline Results */}
       <div className="mt-8">
         {!traceData ? (
           <div className="text-center text-gray-500 py-12">
@@ -99,20 +109,22 @@ export default function Trace() {
             </div>
             
             <div className="border-l-2 border-gray-200 ml-10 pl-8 relative space-y-12 py-4">
-                {/* Collection Event */}
-                <div className="timeline-item">
-                    <h3 className="text-lg font-semibold text-[#1E6F5C]">1. Collection & Harvest</h3>
-                    <p className="text-sm text-gray-500">{new Date(traceData.collection.harvestDate).toUTCString()}</p>
-                    <div className="mt-2 bg-gray-50 p-4 rounded-lg text-sm space-y-2">
-                        <p><strong>Species:</strong> {traceData.collection.species}</p>
-                        <p><strong>Location:</strong> {traceData.collection.geoLocation.lat}, {traceData.collection.geoLocation.lng}</p>
-                        <p><strong>Collector:</strong> {traceData.collection.collectorName}</p>
-                        <p className="font-mono text-xs text-gray-400 mt-2">Tx: {traceData.collection.blockchainTxHash}</p>
-                    </div>
-                </div>
+                {/* Collection Event - Added optional chaining ?. */}
+                {traceData.collection && (
+                  <div className="timeline-item">
+                      <h3 className="text-lg font-semibold text-[#1E6F5C]">1. Collection & Harvest</h3>
+                      <p className="text-sm text-gray-500">{new Date(traceData.collection.harvestDate).toUTCString()}</p>
+                      <div className="mt-2 bg-gray-50 p-4 rounded-lg text-sm space-y-2">
+                          <p><strong>Species:</strong> {traceData.collection?.species}</p>
+                          <p><strong>Location:</strong> {traceData.collection?.geoLocation?.lat}, {traceData.collection?.geoLocation?.lng}</p>
+                          <p><strong>Collector:</strong> {traceData.collection?.collectorName}</p>
+                          <p className="font-mono text-xs text-gray-400 mt-2">Tx: {traceData.collection?.blockchainTxHash}</p>
+                      </div>
+                  </div>
+                )}
                 
                 {/* Processing Events */}
-                {traceData.processing.length > 0 && (
+                {traceData.processing?.length > 0 && (
                      <div className="timeline-item">
                         <h3 className="text-lg font-semibold text-[#1E6F5C]">2. Processing</h3>
                         {traceData.processing.map(p => (
@@ -129,7 +141,7 @@ export default function Trace() {
                 )}
 
                 {/* Quality Test Events */}
-                {traceData.testing.length > 0 && (
+                {traceData.testing?.length > 0 && (
                     <div className="timeline-item">
                         <h3 className="text-lg font-semibold text-[#1E6F5C]">3. Quality Testing</h3>
                         {traceData.testing.map(t => (
@@ -150,7 +162,6 @@ export default function Trace() {
         )}
       </div>
 
-      {/* QR Code Modal */}
       {isQrModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm text-center relative">
@@ -158,10 +169,16 @@ export default function Trace() {
                 <X size={24} />
             </button>
             <h3 className="text-xl font-bold mb-4">Scan for Traceability Details</h3>
-            <div className="flex justify-center items-center my-6">
+            <div className="flex justify-center items-center my-6" ref={qrCodeRef}> {/* Assign ref here */}
               <QRCodeCanvas value={`${window.location.origin}/trace/${selectedBatchId}`} size={200} />
             </div>
-            <p className="font-mono text-gray-600">Batch ID: {selectedBatchId}</p>
+            <p className="font-mono text-gray-600 mb-4">Batch ID: {selectedBatchId}</p>
+            <button 
+              onClick={handleDownloadQr} 
+              className="bg-[#1E6F5C] text-white px-4 py-2 rounded-lg font-semibold hover:bg-[#165a49] transition-colors text-sm flex items-center justify-center w-full"
+            >
+              <Download size={16} className="mr-2" /> Download QR Code
+            </button>
           </div>
         </div>
       )}
