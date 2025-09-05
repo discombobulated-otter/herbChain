@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FABRIC_SAMPLES="${HOME}/fabric-samples"
 TEST_NETWORK="${FABRIC_SAMPLES}/test-network"
 
-CHAINCODE_DIR="${SCRIPT_DIR}/../chaincode/mycc"
+CHAINCODE_DIR="${SCRIPT_DIR}/../chaincode/herb"
 
 if [ ! -d "$CHAINCODE_DIR" ]; then
     echo "ERROR: Chaincode directory not found at $CHAINCODE_DIR"

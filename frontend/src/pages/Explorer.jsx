@@ -16,7 +16,16 @@ export default function Explorer() {
     console.log("Submitting:", formType, formData);
 
     setMessage(`✅ ${formType} event submitted successfully!`);
-    setFormData({});
+    
+    // Reset the form after submission
+    setFormData({}); 
+    // Clear all input fields by resetting the specific keys for the current formType
+    const fieldsToReset = e.target.elements;
+    for (let i = 0; i < fieldsToReset.length; i++) {
+        if(fieldsToReset[i].name) {
+            setFormData(prev => ({...prev, [fieldsToReset[i].name]: ''}));
+        }
+    }
   };
 
   return (
@@ -25,7 +34,11 @@ export default function Explorer() {
 
       <label>
         Select Event Type:
-        <select value={formType} onChange={(e) => setFormType(e.target.value)}>
+        <select value={formType} onChange={(e) => {
+            setFormType(e.target.value);
+            setFormData({}); // Clear form data when switching types
+            setMessage(""); // Clear message on type switch
+        }}>
           <option value="collection">Collection Event</option>
           <option value="processing">Processing Step</option>
           <option value="quality">Quality Test</option>
@@ -41,6 +54,7 @@ export default function Explorer() {
               placeholder="Collection ID"
               value={formData.id || ""}
               onChange={handleChange}
+              required
             />
             <input
               type="text"
@@ -48,6 +62,7 @@ export default function Explorer() {
               placeholder="Latitude"
               value={formData.lat || ""}
               onChange={handleChange}
+              required
             />
             <input
               type="text"
@@ -55,6 +70,7 @@ export default function Explorer() {
               placeholder="Longitude"
               value={formData.lng || ""}
               onChange={handleChange}
+              required
             />
             <input
               type="text"
@@ -62,6 +78,7 @@ export default function Explorer() {
               placeholder="Species"
               value={formData.species || ""}
               onChange={handleChange}
+              required
             />
             <input
               type="text"
@@ -69,6 +86,7 @@ export default function Explorer() {
               placeholder="Collector ID"
               value={formData.collectorId || ""}
               onChange={handleChange}
+              required
             />
           </>
         )}
@@ -81,6 +99,7 @@ export default function Explorer() {
               placeholder="Batch ID"
               value={formData.batchId || ""}
               onChange={handleChange}
+              required
             />
             <input
               type="text"
@@ -88,6 +107,7 @@ export default function Explorer() {
               placeholder="Processing Step"
               value={formData.step || ""}
               onChange={handleChange}
+              required
             />
             <input
               type="text"
@@ -95,6 +115,7 @@ export default function Explorer() {
               placeholder="Processor ID"
               value={formData.processorId || ""}
               onChange={handleChange}
+              required
             />
           </>
         )}
@@ -107,6 +128,7 @@ export default function Explorer() {
               placeholder="Batch ID"
               value={formData.batchId || ""}
               onChange={handleChange}
+              required
             />
             <input
               type="text"
@@ -114,6 +136,7 @@ export default function Explorer() {
               placeholder="Test Type"
               value={formData.testType || ""}
               onChange={handleChange}
+              required
             />
             <input
               type="text"
@@ -121,6 +144,7 @@ export default function Explorer() {
               placeholder="Result"
               value={formData.result || ""}
               onChange={handleChange}
+              required
             />
             <input
               type="text"
@@ -128,6 +152,7 @@ export default function Explorer() {
               placeholder="Lab ID"
               value={formData.labId || ""}
               onChange={handleChange}
+              required
             />
           </>
         )}
