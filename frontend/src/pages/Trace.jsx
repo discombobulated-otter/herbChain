@@ -1,8 +1,8 @@
-import { useState, useMemo, useRef } from "react"; // Import useRef
+import { useState, useMemo, useRef } from "react";
 import { QRCodeCanvas } from "qrcode.react";
-import { X, Download } from 'lucide-react'; // Import Download icon
+import { X, Download, Brain, Loader2 } from "lucide-react";
 
-// Mock data (no changes needed here)
+// Mock data
 const supplyChainData = {
   collectionEvents: [
     { id: 'CE001', blockchainTxHash: '0x4a7b2c9e...', species: 'Withania somnifera (Ashwagandha)', geoLocation: { lat: 28.61, lng: 77.20, zone: 'Delhi-NCR Approved Zone' }, collectorName: 'Ramesh Kumar Collective', harvestDate: '2025-09-01T06:30:00Z', batchId: 'ASH-2024-B001' },
@@ -24,27 +24,61 @@ const supplyChainData = {
   ]
 };
 
-function downloadFhirReport(batchId, data) {
-    const collection = data.collectionEvents.find(e => e.batchId === batchId);
-    if (!collection) return;
-    const bundle = {
-        resourceType: "Bundle", id: `bundle-${batchId}`, type: "collection",
-        entry: [{
-            fullUrl: `urn:uuid:medication-${batchId}`,
-            resource: { resourceType: "Medication", id: `medication-${batchId}`, code: { text: collection.species }, batch: { lotNumber: batchId } }
-        }]
+// Fetch herb summary via backend API
+async function fetchHerbSummary(herbSpecies) {
+  try {const response = await fetch("http://localhost:5000/herbSummary", {  // point to Express backend
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ herbSpecies }),
+});
+
+    if (!response.ok) throw new Error("API request failed");
+    return await response.json();
+  } catch (error) {
+    console.error("Error fetching herb summary:", error);
+    return {
+      HerbName: herbSpecies,
+      ScientificName: "Information unavailable",
+      Family: "Information unavailable",
+      CommonUses: ["No reliable data available"],
+      ActiveConstituents: ["No reliable data available"],
+      PharmacologicalEffects: ["No reliable data available"],
+      SafetyAndToxicity: "No reliable data available",
+      References: ["Unable to fetch references"]
     };
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(bundle, null, 2));
-    const a = document.createElement('a');
-    a.href = dataStr;
-    a.download = `FHIR-Report-${batchId}.json`;
-    a.click();
+  }
+}
+
+function downloadFhirReport(batchId, data) {
+  const collection = data.collectionEvents.find(e => e.batchId === batchId);
+  if (!collection) return;
+  const bundle = {
+    resourceType: "Bundle",
+    id: `bundle-${batchId}`,
+    type: "collection",
+    entry: [{
+      fullUrl: `urn:uuid:medication-${batchId}`,
+      resource: {
+        resourceType: "Medication",
+        id: `medication-${batchId}`,
+        code: { text: collection.species },
+        batch: { lotNumber: batchId }
+      }
+    }]
+  };
+  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(bundle, null, 2));
+  const a = document.createElement('a');
+  a.href = dataStr;
+  a.download = `FHIR-Report-${batchId}.json`;
+  a.click();
 }
 
 export default function Trace() {
   const [selectedBatchId, setSelectedBatchId] = useState(null);
   const [isQrModalOpen, setQrModalOpen] = useState(false);
-  const qrCodeRef = useRef(null); // Ref for the QRCodeCanvas
+  const [herbSummary, setHerbSummary] = useState(null);
+  const [isLoadingHerbSummary, setIsLoadingHerbSummary] = useState(false);
+  const qrCodeRef = useRef(null);
 
   const traceData = useMemo(() => {
     if (!selectedBatchId) return null;
@@ -55,22 +89,32 @@ export default function Trace() {
     };
   }, [selectedBatchId]);
 
-  // Function to handle QR code download
-  const handleDownloadQr = () => {
-    if (qrCodeRef.current) {
-      const canvas = qrCodeRef.current.querySelector('canvas'); // QRCodeCanvas renders a canvas element
-      if (canvas) {
-        const pngUrl = canvas.toDataURL("image/png");
-        const downloadLink = document.createElement("a");
-        downloadLink.href = pngUrl;
-        downloadLink.download = `QR_Code_${selectedBatchId}.png`;
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-      }
+  const handleBatchSelection = async (batchId) => {
+    setSelectedBatchId(batchId);
+    setHerbSummary(null);
+    const collection = supplyChainData.collectionEvents.find(e => e.batchId === batchId);
+    if (collection?.species) {
+      setIsLoadingHerbSummary(true);
+      const summary = await fetchHerbSummary(collection.species);
+      setHerbSummary(summary);
+      setIsLoadingHerbSummary(false);
     }
   };
 
+  const handleDownloadQr = () => {
+    if (qrCodeRef.current) {
+      const canvas = qrCodeRef.current.querySelector('canvas');
+      if (canvas) {
+        const pngUrl = canvas.toDataURL("image/png");
+        const a = document.createElement("a");
+        a.href = pngUrl;
+        a.download = `QR_Code_${selectedBatchId}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    }
+  };
 
   return (
     <div className="p-8">
@@ -79,9 +123,9 @@ export default function Trace() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
         {supplyChainData.compliance.map(batch => (
-          <div 
+          <div
             key={batch.batchId}
-            onClick={() => setSelectedBatchId(batch.batchId)}
+            onClick={() => handleBatchSelection(batch.batchId)}
             className={`stat-card p-4 cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all ${selectedBatchId === batch.batchId ? 'ring-2 ring-[#1E6F5C]' : ''}`}
           >
             <p className="font-mono text-sm text-gray-500">{batch.batchId}</p>
@@ -92,91 +136,176 @@ export default function Trace() {
 
       <hr className="my-8" />
 
-      <div className="mt-8">
-        {!traceData ? (
-          <div className="text-center text-gray-500 py-12">
-            <h3 className="text-lg font-medium text-gray-900">Select a Batch</h3>
-            <p className="mt-1 text-sm">Choose a batch card above to see its detailed timeline.</p>
-          </div>
-        ) : (
-          <div>
-            <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 mb-6 flex flex-col sm:flex-row justify-between items-center">
-              <h3 className="text-xl font-bold text-gray-800 mb-4 sm:mb-0">Traceability Report for {selectedBatchId}</h3>
-              <div className="flex items-center space-x-3">
-                <button onClick={() => setQrModalOpen(true)} className="bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold hover:bg-gray-800 transition-colors text-sm">Generate QR Code</button>
-                <button onClick={() => downloadFhirReport(selectedBatchId, supplyChainData)} className="bg-[#1E6F5C] text-white px-4 py-2 rounded-lg font-semibold hover:bg-[#165a49] transition-colors text-sm">Download FHIR Report</button>
+      {!traceData ? (
+        <div className="text-center text-gray-500 py-12">
+          <h3 className="text-lg font-medium text-gray-900">Select a Batch</h3>
+          <p className="mt-1 text-sm">Choose a batch card above to see its detailed timeline.</p>
+        </div>
+      ) : (
+        <>
+          {/* AI Herb Summary */}
+          {traceData.collection && (
+            <div className="bg-gradient-to-r from-green-50 to-blue-50 p-6 rounded-2xl shadow-lg border border-green-100 mb-6">
+              <div className="flex items-center mb-4">
+                <Brain className="text-[#1E6F5C] mr-2" size={24} />
+                <h3 className="text-xl font-bold text-gray-800">AI-Powered Herb Knowledge</h3>
               </div>
-            </div>
-            
-            <div className="border-l-2 border-gray-200 ml-10 pl-8 relative space-y-12 py-4">
-                {/* Collection Event - Added optional chaining ?. */}
-                {traceData.collection && (
-                  <div className="timeline-item">
-                      <h3 className="text-lg font-semibold text-[#1E6F5C]">1. Collection & Harvest</h3>
-                      <p className="text-sm text-gray-500">{new Date(traceData.collection.harvestDate).toUTCString()}</p>
-                      <div className="mt-2 bg-gray-50 p-4 rounded-lg text-sm space-y-2">
-                          <p><strong>Species:</strong> {traceData.collection?.species}</p>
-                          <p><strong>Location:</strong> {traceData.collection?.geoLocation?.lat}, {traceData.collection?.geoLocation?.lng}</p>
-                          <p><strong>Collector:</strong> {traceData.collection?.collectorName}</p>
-                          <p className="font-mono text-xs text-gray-400 mt-2">Tx: {traceData.collection?.blockchainTxHash}</p>
+              {isLoadingHerbSummary ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="animate-spin text-[#1E6F5C] mr-2" size={24} />
+                  <span className="text-gray-600">Fetching herb information...</span>
+                </div>
+              ) : herbSummary ? (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="font-semibold text-gray-800 mb-2">Basic Information</h4>
+                      <div className="bg-white p-4 rounded-lg text-sm space-y-2">
+                        <p><strong>Scientific Name:</strong> {herbSummary.ScientificName}</p>
+                        <p><strong>Family:</strong> {herbSummary.Family}</p>
                       </div>
-                  </div>
-                )}
-                
-                {/* Processing Events */}
-                {traceData.processing?.length > 0 && (
-                     <div className="timeline-item">
-                        <h3 className="text-lg font-semibold text-[#1E6F5C]">2. Processing</h3>
-                        {traceData.processing.map(p => (
-                             <div key={p.id} className="mt-4">
-                                <p className="text-sm text-gray-500">{new Date(p.timestamp).toUTCString()}</p>
-                                <div className="mt-2 bg-gray-50 p-4 rounded-lg text-sm space-y-2">
-                                   <p><strong>Step:</strong> {p.stepType}</p>
-                                   <p><strong>Facility:</strong> {p.facilityName}</p>
-                                   <p className="font-mono text-xs text-gray-400 mt-2">Tx: {p.blockchainTxHash}</p>
-                                </div>
-                             </div>
-                        ))}
                     </div>
-                )}
 
-                {/* Quality Test Events */}
-                {traceData.testing?.length > 0 && (
-                    <div className="timeline-item">
-                        <h3 className="text-lg font-semibold text-[#1E6F5C]">3. Quality Testing</h3>
-                        {traceData.testing.map(t => (
-                            <div key={t.id} className="mt-4">
-                                <p className="text-sm text-gray-500">{new Date(t.testDate).toUTCString()}</p>
-                                <div className="mt-2 bg-gray-50 p-4 rounded-lg text-sm space-y-2">
-                                   <p><strong>Test:</strong> {t.testType}</p>
-                                   <p><strong>Result:</strong> {t.result} <span className={`font-bold ${t.status === 'PASS' ? 'text-green-600' : 'text-red-600'}`}>{t.status}</span></p>
-                                   <p><strong>Lab:</strong> {t.labName}</p>
-                                   <p className="font-mono text-xs text-gray-400 mt-2">Tx: {t.blockchainTxHash}</p>
-                                </div>
-                            </div>
-                        ))}
+                    <div>
+                      <h4 className="font-semibold text-gray-800 mb-2">Common Uses</h4>
+                      <div className="bg-white p-4 rounded-lg text-sm">
+                        <ul className="space-y-1">
+                          {herbSummary.CommonUses.map((use, i) => (
+                            <li key={i} className="flex items-start"><span className="text-[#1E6F5C] mr-2">•</span>{use}</li>
+                          ))}
+                        </ul>
+                      </div>
                     </div>
-                )}
+
+                    <div>
+                      <h4 className="font-semibold text-gray-800 mb-2">Active Constituents</h4>
+                      <div className="bg-white p-4 rounded-lg text-sm">
+                        <ul className="space-y-1">
+                          {herbSummary.ActiveConstituents.map((c, i) => (
+                            <li key={i} className="flex items-start"><span className="text-[#1E6F5C] mr-2">•</span>{c}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="font-semibold text-gray-800 mb-2">Pharmacological Effects</h4>
+                      <div className="bg-white p-4 rounded-lg text-sm">
+                        <ul className="space-y-1">
+                          {herbSummary.PharmacologicalEffects.map((e, i) => (
+                            <li key={i} className="flex items-start"><span className="text-[#1E6F5C] mr-2">•</span>{e}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-semibold text-gray-800 mb-2">Safety & Toxicity</h4>
+                      <div className="bg-white p-4 rounded-lg text-sm">
+                        <p>{herbSummary.SafetyAndToxicity}</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-semibold text-gray-800 mb-2">References</h4>
+                      <div className="bg-white p-4 rounded-lg text-sm">
+                        <ul className="space-y-1">
+                          {herbSummary.References.map((r, i) => (
+                            <li key={i} className="flex items-start"><span className="text-[#1E6F5C] mr-2">{i+1}.</span><span className="text-xs text-gray-600">{r}</span></li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : <p className="text-gray-600">Select a batch to view herb information</p>}
+            </div>
+          )}
+
+          {/* Traceability & QR */}
+          <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 mb-6 flex flex-col sm:flex-row justify-between items-center">
+            <h3 className="text-xl font-bold text-gray-800 mb-4 sm:mb-0">Traceability Report for {selectedBatchId}</h3>
+            <div className="flex items-center space-x-3">
+              <button onClick={() => setQrModalOpen(true)} className="bg-gray-700 text-white px-4 py-2 rounded-lg font-semibold hover:bg-gray-800 transition-colors text-sm">Generate QR Code</button>
+              <button onClick={() => downloadFhirReport(selectedBatchId, supplyChainData)} className="bg-[#1E6F5C] text-white px-4 py-2 rounded-lg font-semibold hover:bg-[#165a49] transition-colors text-sm">Download FHIR Report</button>
             </div>
           </div>
-        )}
-      </div>
+
+          {/* Supply Chain Timeline */}
+          <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
+            <h3 className="text-xl font-bold text-gray-800 mb-6">Supply Chain Journey</h3>
+            <div className="border-l-2 border-gray-200 ml-10 pl-8 relative space-y-12 py-4">
+              {/* Collection */}
+              {traceData.collection && (
+                <div className="timeline-item">
+                  <div className="absolute -left-12 w-4 h-4 bg-[#1E6F5C] rounded-full border-4 border-white shadow-lg"></div>
+                  <h3 className="text-lg font-semibold text-[#1E6F5C]">1. Collection & Harvest</h3>
+                  <p className="text-sm text-gray-500">{new Date(traceData.collection.harvestDate).toUTCString()}</p>
+                  <div className="mt-2 bg-gray-50 p-4 rounded-lg text-sm space-y-2">
+                    <p><strong>Species:</strong> {traceData.collection.species}</p>
+                    <p><strong>Location:</strong> {traceData.collection.geoLocation.lat}, {traceData.collection.geoLocation.lng}</p>
+                    <p><strong>Zone:</strong> {traceData.collection.geoLocation.zone}</p>
+                    <p><strong>Collector:</strong> {traceData.collection.collectorName}</p>
+                    <p className="font-mono text-xs text-gray-400 mt-2">Blockchain Tx: {traceData.collection.blockchainTxHash}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Processing */}
+              {traceData.processing?.length > 0 && (
+                <div className="timeline-item">
+                  <div className="absolute -left-12 w-4 h-4 bg-[#1E6F5C] rounded-full border-4 border-white shadow-lg"></div>
+                  <h3 className="text-lg font-semibold text-[#1E6F5C]">2. Processing</h3>
+                  {traceData.processing.map(p => (
+                    <div key={p.id} className="mt-4">
+                      <p className="text-sm text-gray-500">{new Date(p.timestamp).toUTCString()}</p>
+                      <div className="mt-2 bg-gray-50 p-4 rounded-lg text-sm space-y-2">
+                        <p><strong>Step:</strong> {p.stepType}</p>
+                        <p><strong>Facility:</strong> {p.facilityName}</p>
+                        <p className="font-mono text-xs text-gray-400 mt-2">Blockchain Tx: {p.blockchainTxHash}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Quality Testing */}
+              {traceData.testing?.length > 0 && (
+                <div className="timeline-item">
+                  <div className="absolute -left-12 w-4 h-4 bg-[#1E6F5C] rounded-full border-4 border-white shadow-lg"></div>
+                  <h3 className="text-lg font-semibold text-[#1E6F5C]">3. Quality Testing</h3>
+                  {traceData.testing.map(t => (
+                    <div key={t.id} className="mt-4">
+                      <p className="text-sm text-gray-500">{new Date(t.testDate).toUTCString()}</p>
+                      <div className="mt-2 bg-gray-50 p-4 rounded-lg text-sm space-y-2">
+                        <p><strong>Test:</strong> {t.testType}</p>
+                        <p><strong>Result:</strong> {t.result} <span className={`font-bold ${t.status==='PASS'?'text-green-600':'text-red-600'}`}>[{t.status}]</span></p>
+                        <p><strong>Lab:</strong> {t.labName}</p>
+                        <p className="font-mono text-xs text-gray-400 mt-2">Blockchain Tx: {t.blockchainTxHash}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       {isQrModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm text-center relative">
             <button onClick={() => setQrModalOpen(false)} className="absolute top-4 right-4 text-gray-500 hover:text-gray-800">
-                <X size={24} />
+              <X size={24} />
             </button>
             <h3 className="text-xl font-bold mb-4">Scan for Traceability Details</h3>
-            <div className="flex justify-center items-center my-6" ref={qrCodeRef}> {/* Assign ref here */}
+            <div className="flex justify-center items-center my-6" ref={qrCodeRef}>
               <QRCodeCanvas value={`${window.location.origin}/trace/${selectedBatchId}`} size={200} />
             </div>
             <p className="font-mono text-gray-600 mb-4">Batch ID: {selectedBatchId}</p>
-            <button 
-              onClick={handleDownloadQr} 
-              className="bg-[#1E6F5C] text-white px-4 py-2 rounded-lg font-semibold hover:bg-[#165a49] transition-colors text-sm flex items-center justify-center w-full"
-            >
+            <button onClick={handleDownloadQr} className="bg-[#1E6F5C] text-white px-4 py-2 rounded-lg font-semibold hover:bg-[#165a49] transition-colors text-sm flex items-center justify-center w-full">
               <Download size={16} className="mr-2" /> Download QR Code
             </button>
           </div>

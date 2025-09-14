@@ -12,10 +12,15 @@ if [ ! -d "$TEST_NETWORK" ]; then
     exit 1
 fi
 
-cd "$TEST_NETWORK"
+cd "$TEST_NETWORK" || exit 1
 
-# Start the network and create channel
+# If the network is already running, tear it down first
+./network.sh down
+
+# Start the network fresh, create channel, enable CAs
 ./network.sh up createChannel -c mychannel -ca
 
-echo "Fabric test-network started."
+# Deploy herb chaincode automatically
+./network.sh deployCC -ccn herb -ccp ../chaincode/herb -ccl javascript -c mychannel
 
+echo "✅ Fabric test-network started with 'herb' chaincode deployed on channel 'mychannel'"

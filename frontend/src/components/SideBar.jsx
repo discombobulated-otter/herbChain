@@ -11,7 +11,7 @@ export default function Sidebar() {
   return (
     <aside className="w-64 min-h-screen bg-white shadow-md flex flex-col fixed">
       <div className="p-6 border-b">
-        <h1 className="text-xl font-bold text-[#1E6F5C]">AyuTrace</h1>
+        <h1 className="text-xl font-bold text-[#1E6F5C]">HerbChain</h1>
         <p className="text-sm text-gray-500">Herb Traceability Platform</p>
       </div>
       <nav className="flex-1 p-4 space-y-2">
